@@ -1,0 +1,17 @@
+{
+  "name": "佐藤",
+  "role": "エンジニア・プロダクト開発者",
+  "tools": ["Claude Code", "Python", "Git"],
+  "current_focus": "Claude Codeを使った開発効率化",
+  "expertise_level": "中〜上級",
+  "known_topics": [
+    "CLAUDE.md設計",
+    "トークン最適化",
+    "巡航モードと非常時モードの切り分け",
+    "Sub-agent活用"
+  ],
+  "goals": [
+    "AIを使った開発フローの自動化",
+    "Claude Codeの躾・育成手法の習得"
+  ]
+}
