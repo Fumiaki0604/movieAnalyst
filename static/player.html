@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>動画アナリスト</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <header>
+    <span class="app-title">動画アナリスト v2.0</span>
+    <span id="summary-text" class="summary-text">読み込み中...</span>
+  </header>
+
+  <div class="main">
+    <!-- 左: 動画プレイヤー -->
+    <div class="video-side">
+      <div class="player-wrapper">
+        <div id="player"></div>
+      </div>
+      <div class="marker-bar" id="marker-bar"></div>
+    </div>
+
+    <!-- 右: インサイトパネル -->
+    <div class="insight-side">
+      <div class="now-playing">
+        <div class="section-label">NOW PLAYING</div>
+        <div id="current-insight">
+          <div class="placeholder">動画を再生するとインサイトが表示されます</div>
+        </div>
+      </div>
+
+      <div class="coming-next">
+        <div class="section-label">COMING NEXT</div>
+        <div id="next-insight">
+          <div class="placeholder">-</div>
+        </div>
+      </div>
+
+      <div class="insight-list-wrapper">
+        <div class="section-label">全インサイト</div>
+        <div id="insight-list"></div>
+      </div>
+    </div>
+  </div>
+
+  <script src="/static/app.js"></script>
+  <script src="https://www.youtube.com/iframe_api"></script>
+</body>
+</html>
