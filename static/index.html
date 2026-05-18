@@ -1,0 +1,272 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>動画アナリスト</title>
+  <link rel="stylesheet" href="/static/style.css">
+  <style>
+    /* ===== index page overrides ===== */
+    body { overflow: auto; height: auto; min-height: 100vh; }
+
+    .home-main {
+      max-width: 860px;
+      margin: 0 auto;
+      padding: 24px 20px 48px;
+    }
+
+    .section-title {
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: .1em;
+      text-transform: uppercase;
+      color: var(--muted);
+      margin-bottom: 12px;
+    }
+
+    /* Report cards */
+    .report-grid { display: flex; flex-direction: column; gap: 10px; }
+
+    .report-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 14px 18px;
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      cursor: pointer;
+      text-decoration: none;
+      color: var(--text);
+      transition: border-color .15s, background .15s;
+    }
+    .report-card:hover {
+      border-color: #60a5fa;
+      background: #1e293bcc;
+    }
+    .report-card-main { flex: 1; overflow: hidden; }
+    .report-card-summary {
+      font-size: 13px;
+      font-weight: 500;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      margin-bottom: 4px;
+    }
+    .report-card-meta {
+      display: flex;
+      gap: 12px;
+      font-size: 11px;
+      color: var(--muted);
+    }
+    .report-card-arrow {
+      color: var(--muted);
+      font-size: 18px;
+      flex-shrink: 0;
+    }
+    .badge-count {
+      background: rgba(96,165,250,.15);
+      color: var(--fact);
+      padding: 1px 6px;
+      border-radius: 3px;
+      font-size: 10px;
+      font-weight: 700;
+    }
+    .empty-state {
+      color: var(--muted);
+      font-size: 13px;
+      padding: 20px 0;
+    }
+
+    /* Profile panel */
+    .profile-panel {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 18px;
+      margin-bottom: 28px;
+    }
+    .profile-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 14px;
+    }
+    .profile-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+    }
+    .profile-field { display: flex; flex-direction: column; gap: 4px; }
+    .profile-field.full-width { grid-column: 1 / -1; }
+    .profile-label { font-size: 10px; color: var(--muted); font-weight: 600; text-transform: uppercase; letter-spacing: .05em; }
+    .profile-input {
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      padding: 6px 8px;
+      color: var(--text);
+      font-size: 12px;
+      font-family: inherit;
+      width: 100%;
+      resize: vertical;
+    }
+    .profile-input:focus { outline: none; border-color: #60a5fa; }
+
+    .btn {
+      padding: 6px 14px;
+      border-radius: 5px;
+      font-size: 12px;
+      font-weight: 600;
+      cursor: pointer;
+      border: none;
+    }
+    .btn-primary { background: #3b82f6; color: #fff; }
+    .btn-primary:hover { background: #2563eb; }
+    .btn-ghost { background: transparent; color: var(--muted); border: 1px solid var(--border); }
+    .btn-ghost:hover { color: var(--text); border-color: var(--text); }
+
+    .save-status { font-size: 11px; color: var(--interpretation); margin-left: 8px; }
+  </style>
+</head>
+<body>
+  <header>
+    <span class="app-title">動画アナリスト v2.0</span>
+    <span class="summary-text" id="header-sub">レポート一覧</span>
+  </header>
+
+  <div class="home-main">
+
+    <!-- Profile -->
+    <div class="profile-panel">
+      <div class="profile-header">
+        <div class="section-title" style="margin:0">視聴者プロフィール</div>
+        <div>
+          <button class="btn btn-primary" id="save-btn" onclick="saveProfile()">保存</button>
+          <span class="save-status" id="save-status"></span>
+        </div>
+      </div>
+      <div class="profile-grid" id="profile-form">
+        <div class="profile-field">
+          <label class="profile-label">名前</label>
+          <input class="profile-input" id="p-name" placeholder="例: 佐藤">
+        </div>
+        <div class="profile-field">
+          <label class="profile-label">役割</label>
+          <input class="profile-input" id="p-role" placeholder="例: エンジニア">
+        </div>
+        <div class="profile-field">
+          <label class="profile-label">使用ツール <span style="font-weight:400">(カンマ区切り)</span></label>
+          <input class="profile-input" id="p-tools" placeholder="例: Python, Git">
+        </div>
+        <div class="profile-field">
+          <label class="profile-label">習熟度</label>
+          <input class="profile-input" id="p-level" placeholder="例: 中〜上級">
+        </div>
+        <div class="profile-field full-width">
+          <label class="profile-label">現在の関心</label>
+          <input class="profile-input" id="p-focus" placeholder="例: Claude Codeを使った開発効率化">
+        </div>
+        <div class="profile-field full-width">
+          <label class="profile-label">既知のトピック <span style="font-weight:400">(カンマ区切り)</span></label>
+          <input class="profile-input" id="p-known" placeholder="例: LangChain, プロンプト設計">
+        </div>
+        <div class="profile-field full-width">
+          <label class="profile-label">目標 <span style="font-weight:400">(カンマ区切り)</span></label>
+          <input class="profile-input" id="p-goals" placeholder="例: AIを使った開発フローの自動化">
+        </div>
+      </div>
+    </div>
+
+    <!-- Reports -->
+    <div class="section-title">過去のレポート</div>
+    <div class="report-grid" id="report-list">
+      <div class="empty-state">読み込み中...</div>
+    </div>
+
+  </div>
+
+  <script>
+    // ---- Profile ----
+    async function loadProfile() {
+      const res = await fetch('/api/profile');
+      if (!res.ok) return;
+      const p = await res.json();
+      document.getElementById('p-name').value  = p.name  || '';
+      document.getElementById('p-role').value  = p.role  || '';
+      document.getElementById('p-tools').value = (p.tools || []).join(', ');
+      document.getElementById('p-level').value = p.expertise_level || '';
+      document.getElementById('p-focus').value = p.current_focus || '';
+      document.getElementById('p-known').value = (p.known_topics || []).join(', ');
+      document.getElementById('p-goals').value = (p.goals || []).join(', ');
+    }
+
+    function splitCSV(s) {
+      return s.split(',').map(x => x.trim()).filter(Boolean);
+    }
+
+    async function saveProfile() {
+      const profile = {
+        name:             document.getElementById('p-name').value.trim(),
+        role:             document.getElementById('p-role').value.trim(),
+        tools:            splitCSV(document.getElementById('p-tools').value),
+        expertise_level:  document.getElementById('p-level').value.trim(),
+        current_focus:    document.getElementById('p-focus').value.trim(),
+        known_topics:     splitCSV(document.getElementById('p-known').value),
+        goals:            splitCSV(document.getElementById('p-goals').value),
+      };
+      const res = await fetch('/api/profile', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(profile),
+      });
+      const status = document.getElementById('save-status');
+      if (res.ok) {
+        status.textContent = '保存しました';
+        setTimeout(() => { status.textContent = ''; }, 2000);
+      } else {
+        status.textContent = '保存に失敗しました';
+        status.style.color = '#f87171';
+      }
+    }
+
+    // ---- Reports ----
+    function fmtDate(mtime) {
+      const d = new Date(mtime * 1000);
+      return d.toLocaleDateString('ja-JP') + ' ' + d.toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit' });
+    }
+
+    async function loadReports() {
+      const res = await fetch('/api/reports');
+      const list = document.getElementById('report-list');
+      if (!res.ok) { list.innerHTML = '<div class="empty-state">読み込みに失敗しました</div>'; return; }
+      const reports = await res.json();
+      if (!reports.length) {
+        list.innerHTML = '<div class="empty-state">レポートがありません。CLIで動画URLを分析してください。</div>';
+        return;
+      }
+      list.innerHTML = reports.map(r => `
+        <a class="report-card" href="/player?video_id=${encodeURIComponent(r.video_id)}">
+          <div class="report-card-main">
+            <div class="report-card-summary">${esc(r.summary || '(要約なし)')}</div>
+            <div class="report-card-meta">
+              <span>${esc(r.video_id)}</span>
+              <span class="badge-count">事実 ${r.fact_count}</span>
+              <span class="badge-count">アドバイス ${r.advice_count}</span>
+              <span>${fmtDate(r.mtime)}</span>
+            </div>
+          </div>
+          <span class="report-card-arrow">›</span>
+        </a>
+      `).join('');
+    }
+
+    function esc(s) {
+      return String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+    }
+
+    loadProfile();
+    loadReports();
+  </script>
+</body>
+</html>

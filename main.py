@@ -83,7 +83,7 @@ def launch_player(video_id: str) -> None:
     t.start()
     time.sleep(1.2)
 
-    url = f"http://127.0.0.1:{PORT}/?video_id={video_id}"
+    url = f"http://127.0.0.1:{PORT}/player?video_id={video_id}"
     webbrowser.open(url)
     print(f"ブラウザで開きました: {url}")
     print("Ctrl+C で終了します。")
@@ -119,13 +119,24 @@ def main() -> None:
     output_dir.mkdir(exist_ok=True)
     json_path = output_dir / f"report_{video_id}.json"
 
-    # 既存レポートがあれば分析をスキップ
+    # 既存レポートがあれば再生成を確認
     if json_path.exists():
-        print(f"\n既存レポートを使用します: {json_path}")
-        report = json.loads(json_path.read_text(encoding="utf-8"))
-        print_report(report)
-        launch_player(video_id)
-        return
+        print(f"\n既存レポートがあります: {json_path}")
+        choice = input("  [1] 既存を使う  [2] 再分析する > ").strip()
+        if choice != "2":
+            report = json.loads(json_path.read_text(encoding="utf-8"))
+            print_report(report)
+            launch_player(video_id)
+            return
+
+    # 出力モード選択
+    print("\n出力モードを選択してください:")
+    print("  [1] full    - プロフィール対応の詳細レポート（デフォルト）")
+    print("  [2] summary - 3〜5文の要約のみ")
+    print("  [3] none    - 字幕取得のみ（分析なし）")
+    mode_input = input("  モード [1/2/3] > ").strip()
+    mode = {"2": "summary", "3": "none"}.get(mode_input, "full")
+    print(f"モード: {mode}")
 
     # 字幕取得
     print("\nエビデンスタイムライン取得中...")
@@ -138,7 +149,7 @@ def main() -> None:
 
     # LangGraph 実行
     print("\nマルチエージェント分析開始:")
-    graph = build_graph()
+    graph = build_graph(mode=mode)
 
     initial_state = {
         "video_id": video_id,

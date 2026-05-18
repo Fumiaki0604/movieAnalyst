@@ -182,6 +182,32 @@ def advice_node(state: GraphState) -> dict:
     }
 
 
+def summary_node(state: GraphState) -> dict:
+    """summary モード専用 — タイムラインを3〜5行で要約する。"""
+    print("  [1/1] 要約生成中...")
+
+    from langchain_core.messages import HumanMessage, SystemMessage
+    from langchain_anthropic import ChatAnthropic
+    from pydantic import BaseModel, Field
+
+    class SummaryOutput(BaseModel):
+        summary: str = Field(description="動画の要約（3〜5文）")
+
+    llm = ChatAnthropic(model=MODEL, temperature=0).with_structured_output(SummaryOutput)
+    timeline_text = _fmt_timeline(state["evidence_timeline"], max_chars=8000)
+    profile_ctx = profile_to_text(state["profile"])
+
+    result = llm.invoke([
+        SystemMessage(content="あなたは動画要約エージェントです。字幕から動画の要点を3〜5文で簡潔にまとめてください。"),
+        HumanMessage(content=(
+            f"【視聴者プロフィール】\n{profile_ctx}\n\n"
+            f"【字幕】\n{timeline_text}\n\n"
+            "視聴者の関心を踏まえ、動画の要点を3〜5文で要約してください。"
+        )),
+    ])
+    return {"summary": result.summary}
+
+
 def compile_report_node(state: GraphState) -> dict:
     """最終レポートを組み立てる（LLM 呼び出しなし）。"""
     report = {
