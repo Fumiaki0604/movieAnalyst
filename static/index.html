@@ -127,6 +127,75 @@
     .btn-ghost:hover { color: var(--text); border-color: var(--text); }
 
     .save-status { font-size: 11px; color: var(--interpretation); margin-left: 8px; }
+
+    /* Analyze form */
+    .analyze-panel {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 18px;
+      margin-bottom: 20px;
+    }
+    .analyze-row {
+      display: flex;
+      gap: 10px;
+      align-items: flex-end;
+      flex-wrap: wrap;
+      margin-bottom: 10px;
+    }
+    .url-input {
+      flex: 1;
+      min-width: 200px;
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      padding: 8px 10px;
+      color: var(--text);
+      font-size: 13px;
+      font-family: inherit;
+    }
+    .url-input:focus { outline: none; border-color: #60a5fa; }
+    .mode-select {
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      padding: 8px 10px;
+      color: var(--text);
+      font-size: 12px;
+      font-family: inherit;
+    }
+    .mode-select:focus { outline: none; border-color: #60a5fa; }
+    .force-label {
+      display: flex;
+      align-items: center;
+      gap: 5px;
+      font-size: 12px;
+      color: var(--muted);
+      white-space: nowrap;
+    }
+
+    /* Progress */
+    .progress-area {
+      display: none;
+      margin-top: 12px;
+    }
+    .progress-area.active { display: block; }
+    .progress-bar-bg {
+      background: var(--bg);
+      border-radius: 4px;
+      height: 6px;
+      overflow: hidden;
+      margin-bottom: 6px;
+    }
+    .progress-bar-fill {
+      height: 100%;
+      background: #3b82f6;
+      border-radius: 4px;
+      transition: width .4s ease;
+      width: 0%;
+    }
+    .progress-label { font-size: 12px; color: var(--muted); }
+    .progress-error { font-size: 12px; color: #f87171; margin-top: 4px; }
   </style>
 </head>
 <body>
@@ -136,6 +205,29 @@
   </header>
 
   <div class="home-main">
+
+    <!-- Analyze -->
+    <div class="analyze-panel">
+      <div class="section-title" style="margin-bottom:12px">動画を分析する</div>
+      <div class="analyze-row">
+        <input class="url-input" id="url-input" type="url"
+               placeholder="YouTube URL を貼り付けてください（例: https://www.youtube.com/watch?v=...）">
+        <select class="mode-select" id="mode-select">
+          <option value="full">full — 詳細レポート</option>
+          <option value="summary">summary — 要約のみ</option>
+          <option value="none">none — 字幕取得のみ</option>
+        </select>
+        <label class="force-label">
+          <input type="checkbox" id="force-check"> 再分析
+        </label>
+        <button class="btn btn-primary" id="analyze-btn" onclick="startAnalyze()">分析開始</button>
+      </div>
+      <div class="progress-area" id="progress-area">
+        <div class="progress-bar-bg"><div class="progress-bar-fill" id="progress-fill"></div></div>
+        <div class="progress-label" id="progress-label">準備中...</div>
+        <div class="progress-error" id="progress-error" style="display:none"></div>
+      </div>
+    </div>
 
     <!-- Profile -->
     <div class="profile-panel">
@@ -264,6 +356,71 @@
     function esc(s) {
       return String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
     }
+
+    // ---- Analyze ----
+    let currentES = null;
+
+    function startAnalyze() {
+      const url = document.getElementById('url-input').value.trim();
+      if (!url) { alert('URLを入力してください'); return; }
+
+      const mode  = document.getElementById('mode-select').value;
+      const force = document.getElementById('force-check').checked;
+      const btn   = document.getElementById('analyze-btn');
+      const area  = document.getElementById('progress-area');
+      const fill  = document.getElementById('progress-fill');
+      const label = document.getElementById('progress-label');
+      const errEl = document.getElementById('progress-error');
+
+      if (currentES) { currentES.close(); }
+
+      btn.disabled = true;
+      btn.textContent = '分析中...';
+      area.classList.add('active');
+      fill.style.width = '0%';
+      label.textContent = '接続中...';
+      errEl.style.display = 'none';
+
+      const qs = new URLSearchParams({ url, mode, force: force ? 'true' : 'false' });
+      currentES = new EventSource(`/api/analyze/stream?${qs}`);
+
+      currentES.onmessage = (e) => {
+        const msg = JSON.parse(e.data);
+        if (msg.type === 'progress') {
+          fill.style.width = msg.pct + '%';
+          label.textContent = msg.label;
+        } else if (msg.type === 'done') {
+          fill.style.width = '100%';
+          label.textContent = '完了！ページを移動します...';
+          currentES.close();
+          setTimeout(() => {
+            window.location.href = `/player?video_id=${encodeURIComponent(msg.video_id)}`;
+          }, 600);
+        } else if (msg.type === 'error') {
+          errEl.textContent = 'エラー: ' + msg.message;
+          errEl.style.display = 'block';
+          label.textContent = '失敗しました';
+          btn.disabled = false;
+          btn.textContent = '分析開始';
+          currentES.close();
+        }
+      };
+
+      currentES.onerror = () => {
+        errEl.textContent = 'サーバーとの接続が切れました';
+        errEl.style.display = 'block';
+        btn.disabled = false;
+        btn.textContent = '分析開始';
+        currentES.close();
+      };
+    }
+
+    // Enterキーでも送信
+    document.addEventListener('DOMContentLoaded', () => {
+      document.getElementById('url-input').addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') startAnalyze();
+      });
+    });
 
     loadProfile();
     loadReports();
