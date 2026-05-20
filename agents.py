@@ -34,6 +34,27 @@ def _fmt_timeline(timeline: list[dict], max_chars: int = 14000) -> str:
     return "\n".join(lines)
 
 
+def _split_chunks(timeline: list[dict], chunk_chars: int = 12000) -> list[list[dict]]:
+    """タイムラインをchunk_chars文字以下のチャンクに分割する。"""
+    chunks: list[list[dict]] = []
+    current: list[dict] = []
+    total = 0
+    for item in timeline:
+        s = item["start"]
+        line = f"[{int(s//60):02d}:{int(s%60):02d}] ({item['event_id']}) {item['text']}"
+        size = len(line) + 1
+        if total + size > chunk_chars and current:
+            chunks.append(current)
+            current = [item]
+            total = size
+        else:
+            current.append(item)
+            total += size
+    if current:
+        chunks.append(current)
+    return chunks
+
+
 def _fmt_facts(facts: list[dict]) -> str:
     lines = []
     for f in facts:
@@ -55,32 +76,36 @@ def _fmt_interpretations(interps: list[dict]) -> str:
 # ---------------------------------------------------------------------------
 
 def extraction_node(state: GraphState) -> dict:
-    """Agent 1 — 事実抽出: タイムラインから観測事実を抽出する。"""
+    """Agent 1 — 事実抽出: タイムライン全体をチャンク分割して抽出する。"""
     print("  [1/4] 事実抽出中...")
 
     llm = _llm().with_structured_output(ExtractionOutput)
-    timeline_text = _fmt_timeline(state["evidence_timeline"])
     profile_ctx = profile_to_text(state["profile"])
+    chunks = _split_chunks(state["evidence_timeline"], chunk_chars=12000)
+    n = len(chunks)
 
-    result = llm.invoke(
-        [
-            SystemMessage(
-                content=(
-                    "あなたは動画コンテンツの事実抽出エージェントです。"
-                    "タイムスタンプ付きのトランスクリプトから、重要な事実・主張・情報を抽出してください。"
-                    "各事実には根拠となる event_id を必ず含めてください。"
-                )
-            ),
-            HumanMessage(
-                content=(
-                    f"【視聴者プロフィール】\n{profile_ctx}\n\n"
-                    f"【エビデンスタイムライン】\n{timeline_text}\n\n"
-                    "上記の動画から重要な事実を5〜10件抽出してください。"
-                )
-            ),
-        ]
-    )
-    return {"facts": [f.model_dump() for f in result.facts]}
+    all_facts: list[dict] = []
+    for idx, chunk in enumerate(chunks):
+        chunk_text = "\n".join(
+            f"[{int(item['start']//60):02d}:{int(item['start']%60):02d}] ({item['event_id']}) {item['text']}"
+            for item in chunk
+        )
+        facts_per_chunk = max(2, 10 // n)  # 合計10件程度に収める
+        result = llm.invoke([
+            SystemMessage(content=(
+                "あなたは動画コンテンツの事実抽出エージェントです。"
+                "タイムスタンプ付きのトランスクリプトから、重要な事実・主張・情報を抽出してください。"
+                "各事実には根拠となる event_id を必ず含めてください。"
+            )),
+            HumanMessage(content=(
+                f"【視聴者プロフィール】\n{profile_ctx}\n\n"
+                f"【エビデンスタイムライン（パート{idx+1}/{n}）】\n{chunk_text}\n\n"
+                f"このパートから重要な事実を{facts_per_chunk}件以内で抽出してください。"
+            )),
+        ])
+        all_facts.extend([f.model_dump() for f in result.facts])
+
+    return {"facts": all_facts}
 
 
 def interpretation_node(state: GraphState) -> dict:
