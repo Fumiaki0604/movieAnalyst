@@ -10,6 +10,7 @@ from fastapi import FastAPI, Request
 from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 
+from anthropic import Anthropic
 from config import load_profile
 from graph import build_graph
 from ingest import fetch_evidence_timeline
@@ -62,6 +63,54 @@ def get_report(video_id: str):
     if not path.exists():
         return JSONResponse({"error": "report not found"}, status_code=404)
     return JSONResponse(json.loads(path.read_text(encoding="utf-8")))
+
+
+def _report_to_md(report: dict) -> str:
+    lines = ["# 動画分析レポート", ""]
+    if report.get("video_url"):
+        lines += [f"**URL**: {report['video_url']}", ""]
+    if report.get("summary"):
+        lines += ["## まとめ", "", report["summary"], ""]
+    if report.get("facts"):
+        lines += ["## 主要事実", ""]
+        for f in report["facts"]:
+            ts = f.get("timestamp_start")
+            ts_str = f" `{int(ts//60):02d}:{int(ts%60):02d}`" if ts is not None else ""
+            lines += [f"### {f['label']}{ts_str}", "", f['description'], ""]
+    if report.get("interpretations"):
+        lines += ["## 解釈", ""]
+        for i in report["interpretations"]:
+            lines += [f"### {i['label']}", "", i['explanation'], f"**関連性**: {i.get('relevance', '')}", ""]
+    if report.get("issues"):
+        lines += ["## 問題点・課題", ""]
+        for iss in report["issues"]:
+            lines += [f"### [{iss.get('severity','?').upper()}] {iss['label']}", "", iss['description'], ""]
+    if report.get("advice"):
+        lines += ["## アドバイス", ""]
+        for idx, adv in enumerate(report["advice"], 1):
+            pri = adv.get("priority", "?").upper()
+            lines += [
+                f"### {idx}. [{pri}] {adv['title']}", "",
+                f"**アクション**: {adv['action']}", "",
+                f"**場面**: {adv['context']}", "",
+                f"**確認方法**: {adv['measure']}", "",
+            ]
+    return "\n".join(lines)
+
+
+@app.get("/api/report/{video_id}/export.md")
+def export_md(video_id: str):
+    from fastapi.responses import Response
+    path = BASE / "output" / f"report_{video_id}.json"
+    if not path.exists():
+        return JSONResponse({"error": "report not found"}, status_code=404)
+    report = json.loads(path.read_text(encoding="utf-8"))
+    md = _report_to_md(report)
+    return Response(
+        content=md.encode("utf-8"),
+        media_type="text/markdown; charset=utf-8",
+        headers={"Content-Disposition": f'attachment; filename="report_{video_id}.md"'},
+    )
 
 
 # ---- Profile ----
@@ -158,6 +207,60 @@ async def analyze_stream(url: str, mode: str = "full", force: str = "false"):
                     break
             except Exception:
                 yield f"data: {json.dumps({'type': 'error', 'message': 'タイムアウト'}, ensure_ascii=False)}\n\n"
+                break
+
+    return StreamingResponse(generator(), media_type="text/event-stream",
+                             headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
+
+
+# ---- Chat (SSE streaming) ----
+
+def _chat_worker(system_prompt: str, messages: list, q: queue.Queue) -> None:
+    try:
+        client = Anthropic()
+        with client.messages.stream(
+            model="claude-sonnet-4-6",
+            max_tokens=1024,
+            system=system_prompt,
+            messages=messages,
+        ) as stream:
+            for text in stream.text_stream:
+                q.put({"text": text})
+        q.put({"done": True})
+    except Exception as e:
+        q.put({"error": str(e)})
+
+
+@app.post("/api/chat/stream")
+async def chat_stream(request: Request):
+    body = await request.json()
+    video_id = body.get("video_id", "")
+    messages = body.get("messages", [])
+
+    path = BASE / "output" / f"report_{video_id}.json"
+    if not path.exists():
+        return JSONResponse({"error": "report not found"}, status_code=404)
+
+    report = json.loads(path.read_text(encoding="utf-8"))
+    system_prompt = (
+        "あなたは動画コンテンツの質問応答アシスタントです。"
+        "以下の動画分析レポートをもとに、ユーザーの質問に日本語で簡潔に答えてください。\n\n"
+        + _report_to_md(report)
+    )
+
+    q: queue.Queue = queue.Queue()
+    threading.Thread(target=_chat_worker, args=(system_prompt, messages, q), daemon=True).start()
+
+    async def generator():
+        loop = asyncio.get_event_loop()
+        while True:
+            try:
+                msg = await loop.run_in_executor(None, lambda: q.get(timeout=120))
+                yield f"data: {json.dumps(msg, ensure_ascii=False)}\n\n"
+                if "done" in msg or "error" in msg:
+                    break
+            except Exception:
+                yield f"data: {json.dumps({'error': 'タイムアウト'}, ensure_ascii=False)}\n\n"
                 break
 
     return StreamingResponse(generator(), media_type="text/event-stream",

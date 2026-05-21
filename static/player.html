@@ -11,6 +11,10 @@
     <a href="/" style="color:var(--muted);text-decoration:none;font-size:18px;flex-shrink:0" title="一覧へ戻る">‹</a>
     <span class="app-title">動画アナリスト v2.0</span>
     <span id="summary-text" class="summary-text">読み込み中...</span>
+    <a href="#" onclick="exportMd(event)"
+       style="color:var(--muted);font-size:11px;text-decoration:none;flex-shrink:0;border:1px solid var(--border);padding:3px 8px;border-radius:4px;white-space:nowrap;">
+      MD保存
+    </a>
   </header>
 
   <div class="main">
@@ -41,6 +45,19 @@
       <div class="insight-list-wrapper">
         <div class="section-label">全インサイト</div>
         <div id="insight-list"></div>
+      </div>
+
+      <!-- Chat panel -->
+      <div class="chat-panel">
+        <div class="section-label">AI チャット</div>
+        <div class="chat-messages" id="chat-messages">
+          <div class="chat-placeholder">動画の内容について質問できます</div>
+        </div>
+        <div class="chat-input-row">
+          <textarea class="chat-input" id="chat-input" rows="2"
+                    placeholder="質問を入力... (Shift+Enter で送信)"></textarea>
+          <button class="chat-send-btn" id="chat-send-btn" onclick="sendChat()">送信</button>
+        </div>
       </div>
     </div>
   </div>

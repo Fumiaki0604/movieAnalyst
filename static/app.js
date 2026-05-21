@@ -247,3 +247,102 @@ function onYouTubeIframeAPIReady() {
 }
 
 document.addEventListener('DOMContentLoaded', loadReport);
+
+// ---------------------------------------------------------------------------
+// MD Export
+// ---------------------------------------------------------------------------
+
+function exportMd(e) {
+  e.preventDefault();
+  if (!videoId) return;
+  const a = document.createElement('a');
+  a.href = `/api/report/${videoId}/export.md`;
+  a.download = `report_${videoId}.md`;
+  a.click();
+}
+
+// ---------------------------------------------------------------------------
+// Chat
+// ---------------------------------------------------------------------------
+
+const chatHistory = [];  // [{role, content}]
+let chatStreaming = false;
+
+function appendChatMsg(role, text) {
+  const msgs = document.getElementById('chat-messages');
+  const placeholder = msgs.querySelector('.chat-placeholder');
+  if (placeholder) placeholder.remove();
+
+  const div = document.createElement('div');
+  div.className = `chat-msg chat-msg-${role === 'user' ? 'user' : 'ai'}`;
+  div.textContent = text;
+  msgs.appendChild(div);
+  msgs.scrollTop = msgs.scrollHeight;
+  return div;
+}
+
+async function sendChat() {
+  if (chatStreaming) return;
+  const input = document.getElementById('chat-input');
+  const btn = document.getElementById('chat-send-btn');
+  const text = input.value.trim();
+  if (!text || !videoId) return;
+
+  input.value = '';
+  chatHistory.push({ role: 'user', content: text });
+  appendChatMsg('user', text);
+
+  chatStreaming = true;
+  btn.disabled = true;
+
+  const aiDiv = appendChatMsg('assistant', '');
+  let aiText = '';
+
+  try {
+    const res = await fetch('/api/chat/stream', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ video_id: videoId, messages: chatHistory }),
+    });
+
+    const reader = res.body.getReader();
+    const decoder = new TextDecoder();
+    let buf = '';
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buf += decoder.decode(value, { stream: true });
+      const parts = buf.split('\n\n');
+      buf = parts.pop();
+      for (const part of parts) {
+        if (!part.startsWith('data: ')) continue;
+        const msg = JSON.parse(part.slice(6));
+        if (msg.text) {
+          aiText += msg.text;
+          aiDiv.textContent = aiText;
+          document.getElementById('chat-messages').scrollTop = 9999;
+        }
+        if (msg.done || msg.error) break;
+      }
+    }
+  } catch (err) {
+    aiDiv.textContent = 'エラーが発生しました';
+  }
+
+  if (aiText) chatHistory.push({ role: 'assistant', content: aiText });
+  chatStreaming = false;
+  btn.disabled = false;
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+  const input = document.getElementById('chat-input');
+  if (input) {
+    input.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' && e.shiftKey) {
+        e.preventDefault();
+        sendChat();
+      }
+    });
+  }
+});
